@@ -1,10 +1,10 @@
-// Cloudflare Pages Function: /api/* routes backed by OpenRouter.
+// Cloudflare Pages Function & Worker: /api/* routes backed by OpenRouter.
 // Directs /api/assistant/chat requests to OpenRouter with streaming SSE.
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_MODEL_ID = "nvidia/nemotron-3.5-lightning:free";
 
-interface Env {
+export interface Env {
   OPENROUTER_API_KEY?: string;
 }
 
@@ -22,6 +22,11 @@ function jsonResponse(data: unknown, status = 200) {
       ...CORS_HEADERS,
     },
   });
+}
+
+function normalizePath(pathname: string): string {
+  const trimmed = pathname.replace(/\/+$/, "");
+  return trimmed === "" ? "/" : trimmed;
 }
 
 function systemInstruction(personality: string, developerMode: boolean) {
@@ -59,22 +64,40 @@ function extractDeltas(event: string): { texts: string[]; done: boolean } {
   return { texts, done };
 }
 
-export const onRequestOptions: PagesFunction<Env> = async () => {
-  return new Response(null, {
-    status: 204,
-    headers: CORS_HEADERS,
-  });
-};
+function getApiKey(env?: Env): string {
+  const globalEnv = (
+    globalThis as unknown as {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+  return (env?.OPENROUTER_API_KEY || globalEnv?.OPENROUTER_API_KEY || "").trim();
+}
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
-  const url = new URL(context.request.url);
-  if (url.pathname !== "/api/assistant/chat") {
+export async function handleApiRequest(
+  request: Request,
+  env?: Env
+): Promise<Response> {
+  const url = new URL(request.url);
+  const path = normalizePath(url.pathname);
+
+  if (path !== "/api/assistant/chat") {
     return jsonResponse({ error: "Endpoint not found." }, 404);
+  }
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: CORS_HEADERS,
+    });
+  }
+
+  if (request.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed." }, 405);
   }
 
   let body: unknown;
   try {
-    body = await context.request.json();
+    body = await request.json();
   } catch {
     return jsonResponse({ error: "Invalid assistant message body." }, 400);
   }
@@ -95,9 +118,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse({ error: "Invalid assistant message payload." }, 400);
   }
 
-  const apiKey = context.env.OPENROUTER_API_KEY || "";
+  const apiKey = getApiKey(env);
   if (!apiKey) {
-    console.error("[CF Function Error] OPENROUTER_API_KEY is missing from environment bindings.");
+    console.error(
+      "[CF Function Error] OPENROUTER_API_KEY is missing from environment bindings."
+    );
     return jsonResponse(
       {
         code: "AI_NOT_CONFIGURED",
@@ -131,11 +156,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }),
     });
   } catch (err) {
-    console.error("[CF Function Error] OpenRouter fetch failed:", err instanceof Error ? err.message : String(err));
+    console.error(
+      "[CF Function Error] OpenRouter fetch failed:",
+      err instanceof Error ? err.message : String(err)
+    );
     return jsonResponse(
       {
         code: "OPENROUTER_REQUEST_FAILED",
-        error: "OpenRouter service could not be reached. Check network connection.",
+        error:
+          "OpenRouter service could not be reached. Check network connection.",
       },
       502
     );
@@ -146,7 +175,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse(
       {
         code: "OPENROUTER_RATE_LIMIT",
-        error: "OpenRouter model rate limit reached. Please wait a moment and try again.",
+        error:
+          "OpenRouter model rate limit reached. Please wait a moment and try again.",
       },
       429
     );
@@ -159,7 +189,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     } catch {
       // Ignore text read failure
     }
-    console.error(`[CF Function Error] OpenRouter upstream returned status ${upstream.status}: ${errorText.slice(0, 300)}`);
+    console.error(
+      `[CF Function Error] OpenRouter upstream returned status ${upstream.status}: ${errorText.slice(
+        0,
+        300
+      )}`
+    );
     return jsonResponse(
       {
         code: "OPENROUTER_REQUEST_FAILED",
@@ -207,7 +242,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         send("[DONE]");
         controller.close();
       } catch (streamErr) {
-        console.error("[CF Function Error] Stream reading interrupted:", streamErr instanceof Error ? streamErr.message : String(streamErr));
+        console.error(
+          "[CF Function Error] Stream reading interrupted:",
+          streamErr instanceof Error ? streamErr.message : String(streamErr)
+        );
         try {
           send(
             JSON.stringify({
@@ -235,4 +273,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ...CORS_HEADERS,
     },
   });
+}
+
+// Cloudflare Pages Function exports
+export const onRequestOptions: PagesFunction<Env> = async (context) => {
+  return handleApiRequest(context.request, context.env);
+};
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  return handleApiRequest(context.request, context.env);
+};
+
+export const onRequest: PagesFunction<Env> = async (context) => {
+  return handleApiRequest(context.request, context.env);
+};
+
+// Cloudflare Worker default export
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return handleApiRequest(request, env);
+  },
 };

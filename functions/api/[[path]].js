@@ -1,4 +1,4 @@
-// Cloudflare Pages Function: /api/* routes backed by OpenRouter.
+// Cloudflare Pages Function & Worker: /api/* routes backed by OpenRouter.
 // Directs /api/assistant/chat requests to OpenRouter with streaming SSE.
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_MODEL_ID = "nvidia/nemotron-3.5-lightning:free";
@@ -15,6 +15,10 @@ function jsonResponse(data, status = 200) {
             ...CORS_HEADERS,
         },
     });
+}
+function normalizePath(pathname) {
+    const trimmed = pathname.replace(/\/+$/, "");
+    return trimmed === "" ? "/" : trimmed;
 }
 function systemInstruction(personality, developerMode) {
     const base = "You are JARVIS, a highly intelligent, polite personal AI assistant. Always reply strictly in Bangla (Bengali) language by default. Never respond in Portuguese, Spanish, or any unintended language. If the user explicitly speaks or requests English, you may reply in English. Be clear, precise, helpful, and natural in tone. Never pretend to perform physical or external device actions that are not supported. Ask before sensitive data changes or external actions.";
@@ -49,20 +53,28 @@ function extractDeltas(event) {
     }
     return { texts, done };
 }
-export const onRequestOptions = async () => {
-    return new Response(null, {
-        status: 204,
-        headers: CORS_HEADERS,
-    });
-};
-export const onRequestPost = async (context) => {
-    const url = new URL(context.request.url);
-    if (url.pathname !== "/api/assistant/chat") {
+function getApiKey(env) {
+    const globalEnv = globalThis.process?.env;
+    return (env?.OPENROUTER_API_KEY || globalEnv?.OPENROUTER_API_KEY || "").trim();
+}
+export async function handleApiRequest(request, env) {
+    const url = new URL(request.url);
+    const path = normalizePath(url.pathname);
+    if (path !== "/api/assistant/chat") {
         return jsonResponse({ error: "Endpoint not found." }, 404);
+    }
+    if (request.method === "OPTIONS") {
+        return new Response(null, {
+            status: 204,
+            headers: CORS_HEADERS,
+        });
+    }
+    if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed." }, 405);
     }
     let body;
     try {
-        body = await context.request.json();
+        body = await request.json();
     }
     catch {
         return jsonResponse({ error: "Invalid assistant message body." }, 400);
@@ -75,7 +87,7 @@ export const onRequestPost = async (context) => {
         typeof developerMode !== "boolean") {
         return jsonResponse({ error: "Invalid assistant message payload." }, 400);
     }
-    const apiKey = context.env.OPENROUTER_API_KEY || "";
+    const apiKey = getApiKey(env);
     if (!apiKey) {
         console.error("[CF Function Error] OPENROUTER_API_KEY is missing from environment bindings.");
         return jsonResponse({
@@ -202,4 +214,20 @@ export const onRequestPost = async (context) => {
             ...CORS_HEADERS,
         },
     });
+}
+// Cloudflare Pages Function exports
+export const onRequestOptions = async (context) => {
+    return handleApiRequest(context.request, context.env);
+};
+export const onRequestPost = async (context) => {
+    return handleApiRequest(context.request, context.env);
+};
+export const onRequest = async (context) => {
+    return handleApiRequest(context.request, context.env);
+};
+// Cloudflare Worker default export
+export default {
+    async fetch(request, env) {
+        return handleApiRequest(request, env);
+    },
 };

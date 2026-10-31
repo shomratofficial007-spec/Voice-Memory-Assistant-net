@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import test from 'node:test';
 import {
   containsWakePhrase,
+  getOnlineTranscriptionLanguage,
   getVoiceErrorMessage,
   getNextVoiceLanguage,
   getVoiceLanguageLabel,
@@ -24,6 +25,23 @@ test('wake phrases match whole tokens, not substrings inside other words', () =>
     'boiling water', 'pointless', 'badboys', 'jarvison', 'hello world',
   ]) {
     assert.equal(containsWakePhrase(phrase), false, phrase);
+  }
+});
+
+test('online transcription is limited to Bengali and English locales', () => {
+  const cases: Array<[string, 'bn' | 'en' | null]> = [
+    ['bn-BD', 'bn'],
+    ['bn-IN', 'bn'],
+    ['bn', 'bn'],
+    ['en-US', 'en'],
+    ['en-GB', 'en'],
+    ['en', 'en'],
+    [' hi-IN ', null],
+    ['es-ES', null],
+    ['unknown-locale', null],
+  ];
+  for (const [locale, expected] of cases) {
+    assert.equal(getOnlineTranscriptionLanguage(locale), expected, locale);
   }
 });
 

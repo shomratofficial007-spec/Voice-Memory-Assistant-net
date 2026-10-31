@@ -22,11 +22,13 @@ The Android app can record a short Bengali or English voice message and send it 
 
 `POST /api/assistant/voice`
 
+Set `language` to `bn` for Bengali or `en` for English.
+
 ```json
 {
   "audioBase64": "<base64-encoded short audio recording>",
   "mimeType": "audio/m4a",
-  "language": "bn" // use "en" for English
+  "language": "bn"
 }
 ```
 

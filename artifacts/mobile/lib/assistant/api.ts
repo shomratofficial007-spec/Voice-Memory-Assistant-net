@@ -87,17 +87,29 @@ export async function transcribeVoiceAudio(
   mimeType = 'audio/m4a',
   language = 'bn',
 ): Promise<string> {
-  const response = await expoFetch(apiUrl('/assistant/voice'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ audioBase64, mimeType, language }),
-  });
-  const body = (await response.json().catch(() => ({}))) as {
-    text?: string;
-    error?: string;
-  };
-  if (!response.ok || !body.text) {
-    throw new Error(body.error ?? `Voice transcription failed (HTTP ${response.status}).`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await expoFetch(apiUrl('/assistant/voice'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ audioBase64, mimeType, language }),
+      signal: controller.signal,
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      text?: string;
+      error?: string;
+    };
+    if (!response.ok || !body.text) {
+      throw new Error(body.error ?? `Voice transcription failed (HTTP ${response.status}).`);
+    }
+    return body.text.trim();
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      throw new Error('ভয়েস সার্ভার থেকে ৪৫ সেকেন্ডের মধ্যে উত্তর আসেনি। ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।');
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return body.text.trim();
 }

@@ -145,6 +145,14 @@ export const VOICE_LANGUAGES = [
   { code: 'xh-ZA', label: 'isiXhosa' },
 ] as const;
 
+/** Return the online transcription language only for supported Bengali/English locales. */
+export function getOnlineTranscriptionLanguage(locale: string): 'bn' | 'en' | null {
+  const normalized = locale.trim().toLowerCase();
+  if (/^bn(?:-|$)/.test(normalized)) return 'bn';
+  if (/^en(?:-|$)/.test(normalized)) return 'en';
+  return null;
+}
+
 export function getVoiceLanguageLabel(code: string): string {
   return VOICE_LANGUAGES.find((language) => language.code === code)?.label ?? code;
 }

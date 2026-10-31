@@ -292,7 +292,7 @@ export default function ChatScreen() {
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await onlineVoiceRecorder.prepareToRecordAsync();
         onlineVoiceRecorder.record();
-        setError('Recording started. Finish speaking and tap the microphone again; the audio will then be sent to the server for transcription.');
+        setError(null);
         setListening(true);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'রেকর্ডিং শুরু করা যায়নি।');
@@ -754,7 +754,7 @@ export default function ChatScreen() {
         <Pressable
           onPress={() => void toggleVoice()}
           accessibilityRole="button"
-          accessibilityLabel={listening ? 'ভয়েস গ্রহণ বন্ধ করুন' : 'ভয়েস অন করুন'}
+          accessibilityLabel={listening ? 'রেকর্ডিং চলছে; বন্ধ করতে আবার চাপুন' : 'ভয়েস অন করুন'}
           style={[styles.roundButton, { backgroundColor: listening ? colors.primary : colors.secondary }]}
         >
           {listening

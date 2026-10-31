@@ -33,6 +33,7 @@ import {
   checkMicrophonePermission,
   dictateOnce,
   getVoiceErrorMessage,
+  getOnlineTranscriptionLanguage,
   getNextVoiceLanguage,
   getVoiceLanguageLabel,
   isDictationAvailable,
@@ -249,9 +250,8 @@ export default function ChatScreen() {
 
     // Android voice uses online transcription for Bengali and English so it does not depend on the installed speech provider.
     // Audio is sent only after consent and after the user stops recording.
-    const onlineLanguage = selectedLang.toLowerCase().startsWith('en') ? 'en' : 'bn';
-    const useOnlineTranscription = Platform.OS === 'android' && (onlineLanguage === 'bn' || onlineLanguage === 'en');
-    if (useOnlineTranscription) {
+    const onlineLanguage = getOnlineTranscriptionLanguage(selectedLang);
+    if (Platform.OS === 'android' && onlineLanguage) {
       if (listening) {
         // Clear the recording indicator immediately so a slow native stop() call
         // cannot leave the microphone button spinning forever.
